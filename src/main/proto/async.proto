@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "org.example.async";
+option java_outer_classname = "AsyncApi";
+
+package async;
+
+enum TaskType {
+  UNKNOWN = 0;
+  CPU_INTENSIVE = 1;
+  IO_INTENSIVE = 2;
+  MIXED = 3;
+}
+
+message TaskRequest {
+  string task_id = 1;
+  string payload = 2;
+  TaskType type = 3;
+}
+
+message TaskHandle {
+  string taskId = 1;
+}
+
+enum TaskStatus {
+  PENDING = 0;
+  RUNNING = 1;
+  COMPLETED = 2;
+  FAILED = 3;
+}
+
+message TaskResult {
+  string taskId = 1;
+  TaskStatus status = 2;
+  string result = 3;
+  string error = 4;
+}
+
+service AsyncTaskService {
+  rpc Submit(TaskRequest) returns (TaskHandle);
+  rpc AwaitResult(TaskHandle) returns (stream TaskResult);
+}
