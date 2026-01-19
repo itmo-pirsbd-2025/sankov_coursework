@@ -64,7 +64,7 @@
 Результат бенчмарков:
 | Benchmark                       | (numDocs)   | (wordsPerDoc) | Mode | Cnt  | Score  | Error    | Units |
 |---------------------------------|-------------|---------------|------|------|--------|----------|-------|
-| SearchJmhBenchmark.addDocument  | 100         | 100           | avgt | 5    | 0,572  | ± 0,129    ms/op |
+| SearchJmhBenchmark.addDocument  | 100         | 100           | avgt | 5    | 0,572  | ± 0,129  | ms/op |
 | SearchJmhBenchmark.addDocument  | 100         | 500           | avgt | 5    | 1,801  | ± 0,353  | ms/op |
 | SearchJmhBenchmark.addDocument  | 100         | 1000          | avgt | 5    | 2,974  | ± 0,473  | ms/op |
 | SearchJmhBenchmark.addDocument  | 1000        | 100           | avgt | 5    | 0,577  | ± 0,141  | ms/op |
