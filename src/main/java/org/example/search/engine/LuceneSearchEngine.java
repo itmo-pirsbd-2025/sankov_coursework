@@ -4,62 +4,64 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.ByteBuffersDirectory;
+import org.apache.lucene.search.*;
+import org.apache.lucene.store.*;
 import org.example.search.model.IndexedDocument;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class LuceneSearchEngine implements SearchEngine {
 
-    private final StandardAnalyzer analyzer = new StandardAnalyzer();
-    private final Directory directory = new ByteBuffersDirectory();
-    private final IndexWriter writer;
+    StandardAnalyzer analizer;
+    Directory dir;
+    IndexWriter indexWriter;
 
     public LuceneSearchEngine() throws Exception {
-        IndexWriterConfig config = new IndexWriterConfig(analyzer);
-        this.writer = new IndexWriter(directory, config);
+        analizer = new StandardAnalyzer();
+        dir = new ByteBuffersDirectory();
+
+        IndexWriterConfig conf = new IndexWriterConfig(analizer);
+        indexWriter = new IndexWriter(dir, conf);
     }
 
-    @Override
-    public synchronized void addDocument(IndexedDocument doc) throws Exception {
-        Document d = new Document();
-        d.add(new StringField("id", doc.id(), Field.Store.YES));
-        d.add(new TextField("title", doc.title(), Field.Store.YES));
-        d.add(new TextField("body", doc.body(), Field.Store.NO));
+    public void addDocument(IndexedDocument doc) throws Exception {
+        Document luceneDoc = new Document();
 
-        writer.addDocument(d);
-        writer.commit();
+        // сохраняем id как строку
+        luceneDoc.add(new StringField("id", doc.id(), Store.YES));
+        luceneDoc.add(new TextField("title", doc.title(), Store.YES));
+        luceneDoc.add(new TextField("content", doc.body(), Store.NO));
+
+        indexWriter.addDocument(luceneDoc);
+        indexWriter.commit();  // сохраняем изменения
     }
 
-    @Override
-    public synchronized List<SearchResultItem> search(String query, int limit) throws Exception {
-        try (DirectoryReader reader = DirectoryReader.open(directory)) {
+    public List<SearchResultItem> search(String queryStr, int maxResults) throws Exception {
+        ArrayList<SearchResultItem> found = new ArrayList<>();
+
+        DirectoryReader reader = DirectoryReader.open(dir);
+        try {
             IndexSearcher searcher = new IndexSearcher(reader);
-            QueryParser parser = new QueryParser("body", analyzer);
+            QueryParser qp = new QueryParser("content", analizer);
 
-            var q = parser.parse(query);
-            var topDocs = searcher.search(q, limit);
+            Query q = qp.parse(queryStr);
+            TopDocs hits = searcher.search(q, maxResults);
 
-            List<SearchResultItem> results = new ArrayList<>();
-            for (ScoreDoc sd : topDocs.scoreDocs) {
-                Document d = searcher.doc(sd.doc);
-                results.add(new SearchResultItem(
-                        d.get("id"),
-                        d.get("title"),
-                        sd.score
-                ));
+            for (ScoreDoc hit : hits.scoreDocs) {
+                Document doc = searcher.doc(hit.doc);
+                String docId = doc.get("id");
+                String title = doc.get("title");
+                float score = hit.score;
+
+                found.add(new SearchResultItem(docId, title, score));
             }
-
-            return results;
+        } finally {
+            reader.close();
         }
+
+        return found;
     }
 }

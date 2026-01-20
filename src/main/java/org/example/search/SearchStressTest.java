@@ -2,166 +2,90 @@ package org.example.search;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
+
+import java.util.ArrayList;
+import java.util.Collections;
 
 public class SearchStressTest {
 
-    private static final String HOST = "localhost";
-    private static final int PORT = 50051;
-
-    private static final int CLIENT_THREADS = 32;
-
-    private static final int TEST_DURATION_SECONDS = 60;
-
-    private static final int TEXT_PERCENT = 70;
-
-    private static final String[] WORDS = {
-            "distributed", "system", "vector", "search", "grpc",
-            "asynchronous", "java", "index", "lucene", "cloud",
-            "scalable", "performance", "benchmark", "semantic",
-            "architecture", "network", "service", "client", "server"
-    };
+    static final String HOST = "localhost";
+    static final int PORT = 50051;
 
     public static void main(String[] args) throws Exception {
-        ManagedChannel channel = ManagedChannelBuilder
+        ManagedChannel ch = ManagedChannelBuilder
                 .forAddress(HOST, PORT)
                 .usePlaintext()
                 .build();
 
         SearchServiceGrpc.SearchServiceBlockingStub stub =
-                SearchServiceGrpc.newBlockingStub(channel);
+                SearchServiceGrpc.newBlockingStub(ch);
+        System.out.println("loading docs...");
 
-        preloadDocuments(stub, 50_000);
-
-        System.out.println("Preload finished. Starting load test...");
-
-        ExecutorService pool = Executors.newFixedThreadPool(CLIENT_THREADS);
-        CountDownLatch stopLatch = new CountDownLatch(1);
-
-        AtomicLong totalRequests = new AtomicLong();
-        AtomicLong totalErrors = new AtomicLong();
-
-        List<Long> latencies = new CopyOnWriteArrayList<>();
-
-        Runnable worker = () -> {
-            Random rnd = new Random();
-            while (stopLatch.getCount() > 0) {
-                long start = System.nanoTime();
-                try {
-                    int p = rnd.nextInt(100);
-                    if (p < TEXT_PERCENT) {
-                        doTextSearch(stub, rnd);
-                    } else {
-                        doVectorSearch(stub, rnd);
-                    }
-                    long end = System.nanoTime();
-                    latencies.add(end - start);
-                    totalRequests.incrementAndGet();
-                } catch (Exception e) {
-                    totalErrors.incrementAndGet();
-                }
-            }
-        };
-
-        for (int i = 0; i < CLIENT_THREADS; i++) {
-            pool.submit(worker);
-        }
-
-        long testStart = System.currentTimeMillis();
-        Thread.sleep(TEST_DURATION_SECONDS * 1000L);
-        long testEnd = System.currentTimeMillis();
-
-        stopLatch.countDown();
-        pool.shutdown();
-        pool.awaitTermination(10, TimeUnit.SECONDS);
-
-        channel.shutdownNow();
-
-        long durationMs = testEnd - testStart;
-        long requests = totalRequests.get();
-        long errors = totalErrors.get();
-
-        double rps = requests * 1000.0 / durationMs;
-
-        System.out.println("===== LOAD TEST RESULT =====");
-        System.out.println("Duration: " + durationMs + " ms");
-        System.out.println("Threads: " + CLIENT_THREADS);
-        System.out.println("Total requests: " + requests);
-        System.out.println("Total errors: " + errors);
-        System.out.printf("RPS: %.2f%n", rps);
-
-        if (!latencies.isEmpty()) {
-            latencies.sort(Long::compare);
-
-            long p50 = percentile(latencies, 50);
-            long p95 = percentile(latencies, 95);
-            long p99 = percentile(latencies, 99);
-
-            System.out.println("Latency (TEXT+VECTOR mix), micros:");
-            System.out.println("p50: " + TimeUnit.NANOSECONDS.toMicros(p50));
-            System.out.println("p95: " + TimeUnit.NANOSECONDS.toMicros(p95));
-            System.out.println("p99: " + TimeUnit.NANOSECONDS.toMicros(p99));
-        }
-    }
-
-    private static void preloadDocuments(SearchServiceGrpc.SearchServiceBlockingStub stub,
-                                         int count) {
-        Random rnd = new Random(42);
-        for (int i = 0; i < count; i++) {
-            String id = "preload-" + i;
-            String title = "Document " + i;
-            String content = randomText(rnd, 50);
-
+        for (int i = 0; i < 1000; i++) {
             AddDocumentRequest req = AddDocumentRequest.newBuilder()
-                    .setId(id)
-                    .setTitle(title)
-                    .setContent(content)
+                    .setId("doc" + i)
+                    .setTitle("Test doc " + i)
+                    .setContent("test content for document number " + i)
                     .build();
-
             stub.addDocument(req);
         }
-    }
+        Thread.sleep(5000);
 
-    private static void doTextSearch(SearchServiceGrpc.SearchServiceBlockingStub stub,
-                                     Random rnd) {
-        String q = WORDS[rnd.nextInt(WORDS.length)] + " "
-                + WORDS[rnd.nextInt(WORDS.length)];
+        System.out.println("\n=== LOAD TEST 30 сек ===");
+        long startTime = System.currentTimeMillis();
+        ArrayList<Long> times = new ArrayList<>();  // все времена
+        int total = 0;
+        int errors = 0;
 
-        SearchRequest req = SearchRequest.newBuilder()
-                .setQuery(q)
-                .setMethod(SearchMethod.TEXT)
-                .build();
-
-        stub.search(req);
-    }
-
-    private static void doVectorSearch(SearchServiceGrpc.SearchServiceBlockingStub stub,
-                                       Random rnd) {
-        String q = randomText(rnd, 10);
-
-        SearchRequest req = SearchRequest.newBuilder()
-                .setQuery(q)
-                .setMethod(SearchMethod.VECTOR)
-                .build();
-
-        stub.search(req);
-    }
-
-    private static String randomText(Random rnd, int words) {
-        StringBuilder sb = new StringBuilder(words * 8);
-        for (int i = 0; i < words; i++) {
-            sb.append(WORDS[rnd.nextInt(WORDS.length)]).append(' ');
+        while ((System.currentTimeMillis() - startTime) < 30000) {
+            long start = System.nanoTime();
+            try {
+                if (Math.random() < 0.7) {
+                    SearchRequest req = SearchRequest.newBuilder()
+                            .setQuery("test")
+                            .setMethod(SearchMethod.TEXT)
+                            .build();
+                    stub.search(req);
+                } else {
+                    SearchRequest req = SearchRequest.newBuilder()
+                            .setQuery("document")
+                            .setMethod(SearchMethod.VECTOR)
+                            .build();
+                    stub.search(req);
+                }
+                long time = System.nanoTime() - start;
+                times.add(time);
+                total++;
+            } catch (Exception e) {
+                errors++;
+            }
         }
-        return sb.toString();
-    }
 
-    private static long percentile(List<Long> sortedLatencies, int p) {
-        if (sortedLatencies.isEmpty()) return 0L;
-        int idx = (int) Math.ceil(p / 100.0 * sortedLatencies.size()) - 1;
-        idx = Math.max(0, Math.min(idx, sortedLatencies.size() - 1));
-        return sortedLatencies.get(idx);
+        ch.shutdown();
+
+        System.out.println("\n=== RESULTS ===");
+        System.out.println("total requests: " + total);
+        System.out.println("errors: " + errors);
+        System.out.println("rps: " + (total * 1000 / 30));
+
+        if (!times.isEmpty()) {
+            Collections.sort(times);
+
+            long p50 = getPercentile(times, 50);
+            long p90 = getPercentile(times, 90);
+            long p95 = getPercentile(times, 95);
+            long p99 = getPercentile(times, 99);
+
+            System.out.println("\n=== LATENCY (микросекунды) ===");
+            System.out.println("p50: " + (p50 / 1000));
+            System.out.println("p90: " + (p90 / 1000));
+            System.out.println("p95: " + (p95 / 1000));
+            System.out.println("p99: " + (p99 / 1000));
+        }
+    }
+    static long getPercentile(ArrayList<Long> sortedTimes, int percent) {
+        int idx = (int) (percent / 100.0 * sortedTimes.size());
+        if (idx >= sortedTimes.size()) idx = sortedTimes.size() - 1;
+        return sortedTimes.get(idx);
     }
 }

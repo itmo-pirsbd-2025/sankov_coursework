@@ -2,7 +2,6 @@ package org.example.search;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.Server;
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 import org.example.search.service.SearchServiceImpl;
 import org.openjdk.jmh.annotations.*;
@@ -13,104 +12,93 @@ import java.util.concurrent.TimeUnit;
 
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-@Warmup(iterations = 3, time = 1)
-@Measurement(iterations = 5, time = 1)
+@Warmup(iterations = 2)
+@Measurement(iterations = 3)
 @Fork(1)
 @State(Scope.Benchmark)
 public class SearchJmhBenchmark {
 
-    private ManagedChannel channel;
-    private SearchServiceGrpc.SearchServiceBlockingStub stub;
-    private Random rnd;
-    private int docId = 0;
+    ManagedChannel ch;
+    SearchServiceGrpc.SearchServiceBlockingStub stub;
+    Random rand = new Random(123);
+    int nextId = 0;
+
+    static final String[] words = {"grpc", "search", "lucene", "java", "test",
+            "fast", "bench", "server", "client", "doc"};  // короче массив
 
     @Param({"100", "1000", "10000"})
-    private int numDocs;
+    int docsCount;
 
-    @Param({"100", "500", "1000"})
-    private int wordsPerDoc;
+    @Param({"100", "500"})
+    int wordsCount;
 
-    private static final String[] WORDS = {
-            "distributed", "system", "vector", "search", "grpc",
-            "asynchronous", "java", "index", "lucene", "cloud",
-            "scalable", "performance", "benchmark", "semantic",
-            "architecture", "network", "service", "client", "server"
-    };
-
-    @Setup(Level.Trial)
-    public void setup() throws IOException {
-        Server server = NettyServerBuilder.forPort(50051)
+    @Setup
+    public void init() throws IOException {
+        var server = NettyServerBuilder.forPort(50051)
                 .addService(new SearchServiceImpl())
-                .build()
-                .start();
+                .build().start();
 
-        channel = ManagedChannelBuilder.forAddress("localhost", 50051)
-                .usePlaintext()
-                .build();
+        System.out.println("server started on 50051");
 
-        stub = SearchServiceGrpc.newBlockingStub(channel);
-        rnd = new Random(42);
+        ch = ManagedChannelBuilder.forAddress("localhost", 50051)
+                .usePlaintext().build();
 
-        for (int i = 0; i < numDocs; i++) {
+        stub = SearchServiceGrpc.newBlockingStub(ch);
+
+        // warmup доки
+        for (int i = 0; i < docsCount; i++) {
             stub.addDocument(AddDocumentRequest.newBuilder()
-                    .setId("warmup-" + i)
-                    .setTitle("Warmup " + i)
-                    .setContent(randomText(wordsPerDoc))
+                    .setId("w-" + i)
+                    .setTitle("W" + i)
+                    .setContent(makeText(wordsCount))
                     .build());
         }
+        System.out.println("added " + docsCount + " warmup docs");
     }
 
-    @TearDown(Level.Trial)
-    public void tearDown() {
-        if (channel != null) {
-            channel.shutdownNow();
+    @TearDown
+    public void done() {
+        if (ch != null) {
+            ch.shutdownNow();
         }
     }
 
     @Benchmark
-    public void addDocument() {
-        AddDocumentRequest req = AddDocumentRequest.newBuilder()
-                .setId("doc-" + (docId++))
-                .setTitle("Title " + docId)
-                .setContent(randomText(wordsPerDoc))
+    public void addDoc() {
+        var req = AddDocumentRequest.newBuilder()
+                .setId("d" + nextId++)
+                .setTitle("T" + nextId)
+                .setContent(makeText(wordsCount))
                 .build();
-
         stub.addDocument(req);
     }
 
     @Benchmark
-    public void textSearch() {
-        String q = WORDS[rnd.nextInt(WORDS.length)]
-                + " " + WORDS[rnd.nextInt(WORDS.length)];
+    public void textSrch() {
+        String q = words[rand.nextInt(words.length)] + " " +
+                words[rand.nextInt(words.length)];
 
-        SearchRequest req = SearchRequest.newBuilder()
+        stub.search(SearchRequest.newBuilder()
                 .setQuery(q)
                 .setMethod(SearchMethod.TEXT)
-                .build();
-
-        stub.search(req);
+                .build());
     }
 
     @Benchmark
-    public void vectorSearch() {
-        String q = randomText(wordsPerDoc / 10);
-
-        SearchRequest req = SearchRequest.newBuilder()
-                .setQuery(q)
+    public void vecSrch() {
+        stub.search(SearchRequest.newBuilder()
+                .setQuery(makeText(wordsCount/5))
                 .setMethod(SearchMethod.VECTOR)
-                .build();
-
-        stub.search(req);
+                .build());
     }
 
-    private String randomText(int words) {
+    private String makeText(int cnt) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < words; i++) {
-            sb.append(WORDS[rnd.nextInt(WORDS.length)]).append(' ');
+        while (cnt-- > 0) {
+            sb.append(words[rand.nextInt(words.length)]).append(' ');
         }
         return sb.toString();
     }
-
     public static void main(String[] args) throws Exception {
         org.openjdk.jmh.Main.main(new String[]{
                 "org.example.search.SearchJmhBenchmark",

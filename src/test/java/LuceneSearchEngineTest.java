@@ -8,116 +8,74 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class LuceneSearchEngineTest {
+public class LuceneSearchEngineTest {  // короткое имя!
 
-    private LuceneSearchEngine engine;
+    LuceneSearchEngine eng;  // короткие имена
 
     @BeforeEach
-    void setUp() throws Exception {
-        engine = new LuceneSearchEngine();
+    void before() throws Exception {
+        eng = new LuceneSearchEngine();
     }
 
     @Test
-    void addSingleDocument_andSearchByBodyToken() throws Exception {
-        IndexedDocument doc = new IndexedDocument(
-                "1",
-                "My first document",
-                "This is a test body with lucene token"
-        );
+    void testOneDoc() throws Exception {
+        IndexedDocument d1 = new IndexedDocument("1", "My doc", "hello lucene test");
+        eng.addDocument(d1);
 
-        engine.addDocument(doc);
+        List<SearchEngine.SearchResultItem> res = eng.search("lucene", 10);
 
-        List<SearchEngine.SearchResultItem> results = engine.search("lucene", 10);
+        assertNotNull(res);
+        assertFalse(res.isEmpty());
 
-        assertNotNull(results);
-        assertFalse(results.isEmpty(), "Expected at least one result");
-
-        SearchEngine.SearchResultItem first = results.get(0);
+        var first = res.get(0);
         assertEquals("1", first.id());
-        assertEquals("My first document", first.title());
-        assertTrue(first.score() > 0.0f);
+        assertEquals("My doc", first.title());
+        assertTrue(first.score() > 0);
     }
 
     @Test
-    void addMultipleDocuments_searchReturnsMostRelevantFirst() throws Exception {
-        engine.addDocument(new IndexedDocument(
-                "1",
-                "Doc 1",
-                "apple banana"
-        ));
-        engine.addDocument(new IndexedDocument(
-                "2",
-                "Doc 2",
-                "apple apple banana"
-        ));
-        engine.addDocument(new IndexedDocument(
-                "3",
-                "Doc 3",
-                "banana only"
-        ));
+    void testManyDocs() throws Exception {
+        eng.addDocument(new IndexedDocument("1", "D1", "apple"));
+        eng.addDocument(new IndexedDocument("2", "D2", "apple apple"));
+        eng.addDocument(new IndexedDocument("3", "D3", "banana"));
 
-        List<SearchEngine.SearchResultItem> results = engine.search("apple", 10);
+        var res = eng.search("apple", 10);
 
-        assertNotNull(results);
-        assertFalse(results.isEmpty());
-        assertTrue(results.size() >= 2);
-
-        assertEquals("2", results.get(0).id(), "Doc 2 should be the most relevant for 'apple'");
+        assertNotNull(res);
+        assertTrue(res.size() >= 2);
+        assertEquals("2", res.get(0).id());  // D2 больше apple
     }
 
     @Test
-    void searchUnknownTerm_returnsEmptyList() throws Exception {
-        engine.addDocument(new IndexedDocument(
-                "1",
-                "Doc",
-                "some text in body"
-        ));
+    void testNoResults() throws Exception {
+        eng.addDocument(new IndexedDocument("1", "Doc", "normal text"));
 
-        List<SearchEngine.SearchResultItem> results = engine.search("nonexistentterm123", 10);
-
-        assertNotNull(results);
-        assertTrue(results.isEmpty(), "Expected empty list for unknown term");
+        var res = eng.search("xyz123nonexistent", 10);
+        assertTrue(res.isEmpty());
     }
 
     @Test
-    void searchRespectsLimit() throws Exception {
+    void testLimit() throws Exception {
+        // добавляем 5 доков
         for (int i = 1; i <= 5; i++) {
-            engine.addDocument(new IndexedDocument(
-                    String.valueOf(i),
-                    "Doc " + i,
-                    "common body token"
+            eng.addDocument(new IndexedDocument(
+                    "" + i,
+                    "Doc" + i,
+                    "test token"
             ));
         }
 
-        List<SearchEngine.SearchResultItem> results = engine.search("common", 2);
-
-        assertNotNull(results);
-        assertEquals(2, results.size(), "Search should respect limit parameter");
+        var res = eng.search("test", 2);
+        assertEquals(2, res.size());
     }
 
     @Test
-    void indexIsPersistentWithinInstance() throws Exception {
-        engine.addDocument(new IndexedDocument(
-                "1",
-                "Title 1",
-                "body one"
-        ));
-        engine.addDocument(new IndexedDocument(
-                "2",
-                "Title 2",
-                "body two"
-        ));
-
-        List<SearchEngine.SearchResultItem> firstSearch = engine.search("body", 10);
-        assertEquals(2, firstSearch.size());
-
-        engine.addDocument(new IndexedDocument(
-                "3",
-                "Title 3",
-                "body three"
-        ));
-
-        List<SearchEngine.SearchResultItem> secondSearch = engine.search("body", 10);
-        assertEquals(3, secondSearch.size());
+    void testPersistent() throws Exception {
+        eng.addDocument(new IndexedDocument("1", "T1", "body"));
+        var first = eng.search("body", 10);
+        assertEquals(1, first.size());
+        eng.addDocument(new IndexedDocument("2", "T2", "body"));
+        var second = eng.search("body", 10);
+        assertEquals(2, second.size());
     }
 }
